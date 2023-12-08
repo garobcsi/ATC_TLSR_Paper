@@ -59,7 +59,7 @@ _attribute_ram_code_ void main_loop(void)
     }
 
     uint8_t current_minute = (get_time() / 60) % 60;
-    if (current_minute != minute_refresh)
+    if (((get_time() / 60) % 60 == 0 && ((get_time() / 60) / 60) % 24 == 0))
     {
         minute_refresh = current_minute;
         uint8_t current_hour = ((get_time() / 60) / 60) % 24;
@@ -72,16 +72,6 @@ _attribute_ram_code_ void main_loop(void)
         {
             epd_display(get_time(), battery_mv, temperature, 0);
         }
-    }
-
-    if (time_reached_period(Timer_CH_0, 10))
-    {
-        if (ble_get_connected())
-            set_led_color(3);
-        else
-            set_led_color(2);
-        WaitMs(1);
-        set_led_color(0);
     }
 
     if (epd_state_handler()) // if epd_update is ongoing enable gpio wakeup to put the display to sleep as fast as possible
