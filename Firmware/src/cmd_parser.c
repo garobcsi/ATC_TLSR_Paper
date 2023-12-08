@@ -5,7 +5,7 @@
 #include "stack/ble/ble.h"
 #include "vendor/common/blt_common.h"
 
-#include "time.h"
+#include "etime.h"
 #include "flash.h"
 
 extern settings_struct settings;
@@ -55,7 +55,7 @@ void cmd_parser(void * p){
 		if(settings.temp_alarm_point==0)settings.temp_alarm_point = 1;
 	}else if(inData == 0xDD){// Set time
 		uint32_t new_time = (req->dat[1]<<24) +(req->dat[2]<<16) +(req->dat[3]<<8) +(req->dat[4]&0xff);
-		set_time(new_time);
+		set_time(new_time, (req->dat[5]<<8) + req->dat[6], req->dat[7], req->dat[8], req->dat[9]);
 	}else if(inData == 0xDE){// Save settings in flash to default
 		reset_settings_to_default();
 		save_settings_to_flash();
@@ -64,5 +64,11 @@ void cmd_parser(void * p){
 	}
 	else if(inData == 0xE0){// force set an EPD model, if it wasnt detect automatically correct
 		set_EPD_model(req->dat[1]);
+	}
+	else if(inData == 0xE1){// force set an EPD scene
+		set_EPD_scene(req->dat[1]);
+	}
+	else if(inData == 0xE2){// force set an EPD scene
+		set_EPD_wait_flush();
 	}
 }
