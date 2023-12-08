@@ -20,6 +20,7 @@
 extern const uint8_t ucMirror[];
 #include "font_60.h"
 #include "font16.h"
+#include "font16zh.h"
 #include "font30.h"
 
 RAM uint8_t epd_model = 0; // 0 = Undetected, 1 = BW213, 2 = BWR213, 3 = BWR154, 4 = BW213ICE, 5 = BWR350
@@ -395,6 +396,14 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     sprintf(buff, "ESL_%02X%02X%02X", mac_public[2], mac_public[1], mac_public[0]);
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 17, (char *)buff, 1);
 
+    if (ble_get_connected()) {
+        sprintf(buff, "78%s", "234");
+    } else {
+        sprintf(buff, "78%s", "56");
+    }
+
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16_zh, 120, 21, (char *)buff, 1);
+
     obdRectangle(&obd, 252, 10, 255, 14, 1, 1);
     obdRectangle(&obd, 255, 2, 295, 22, 1, 1);
 
@@ -404,7 +413,7 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     obdRectangle(&obd, 0, 25, 295, 27, 1, 1);
 
     sprintf(buff, "%02d:%02d", _time.tm_hour, _time.tm_min);
-    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 35, 70, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 35, 85, (char *)buff, 1);
 
     sprintf(buff, "   %d'C", EPD_read_temp());
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 50, (char *)buff, 1);
@@ -412,13 +421,27 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     obdRectangle(&obd, 216, 60, 295, 62, 1, 1);
 
     sprintf(buff, " %dmV", battery_mv);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 60, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 84, (char *)buff, 1);
 
     obdRectangle(&obd, 214, 27, 216, 99, 1, 1);
     obdRectangle(&obd, 0, 97, 295, 99, 1, 1);
 
     sprintf(buff, "%d-%02d-%02d", _time.tm_year, _time.tm_month, _time.tm_day);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 10, 50, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 10, 120, (char *)buff, 1);
+
+    if (_time.tm_week == 7) {
+        sprintf(buff, "9:%c", _time.tm_week + 0x20 + 6);
+    } else {
+        sprintf(buff, "9:%c", _time.tm_week + 0x20);
+    }
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16_zh, 120, 122, (char *)buff, 1);
+
+    if (_time.tm_hour > 7 && _time.tm_hour < 20) {
+        sprintf(buff, "%s", "EFGH");
+    } else {
+        sprintf(buff, "%s", "ABCD");
+    }
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16_zh, 200, 122, (char *)buff, 1);
 
     FixBuffer(epd_temp, epd_buffer, epd_width, epd_height);
 
