@@ -423,7 +423,7 @@
       }
 
       function clear_canvas() {
-        if (confirm("确认清除屏幕?")) {
+        if (confirm("Clear canvas ?")) {
           const canvas = document.getElementById("canvas");
           const ctx = canvas.getContext("2d");
           ctx.fillStyle = "white";
@@ -471,7 +471,7 @@
         document.getElementById("dithering").value = "bwr_Atkinson";
         image_mode.value = "paint";
         paint_color.value = "black";
-        font.value = "黑体";
+        font.value = "black body";
 
         editor.onmousemove = function (e) {
           editor.style.fontSize = `${paint_size.value * 10}px`;
@@ -652,7 +652,12 @@
 
     <h3>Command Control</h3>
     <input type="text" id="cmdTXT" value="0055" />
-	<button type="button" onclick="triggerEpdCmd(document.getElementById('cmdTXT').value);">Send Command</button>
+    <button
+      type="button"
+      onclick="triggerEpdCmd(document.getElementById('cmdTXT').value);"
+    >
+      Send Command
+    </button>
 
     <br />
     <!-- Add tooltips for the buttons below -->
