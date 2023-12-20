@@ -308,17 +308,26 @@ _attribute_ram_code_ void epd_display(struct date_time _time, uint16_t battery_m
     obdFill(&obd, 0, 0); // fill with white
 
     char buff[100];
+
     battery_level = get_battery_level(battery_mv);
     sprintf(buff, "ESL_%02X%02X%02X %s", mac_public[2], mac_public[1], mac_public[0], epd_model_string[epd_model]);
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 17, (char *)buff, 1);
+
     sprintf(buff, "%s", BLE_conn_string[ble_get_connected()]);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 232, 20, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 218, 20, (char *)buff, 1);
+    
     sprintf(buff, "%02d:%02d", _time.tm_hour, _time.tm_min);
     obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 50, 65, (char *)buff, 1);
+    
     sprintf(buff, "%d'C", EPD_read_temp());
     obdWriteStringCustom(&obd, (GFXfont *)&Special_Elite_Regular_30, 10, 95, (char *)buff, 1);
+    
+    sprintf(buff, "%d-%02d-%02d", _time.tm_year, _time.tm_month, _time.tm_day);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 135, 90, (char *)buff, 1);
+    
     sprintf(buff, "Battery %dmV  %d%%", battery_mv, battery_level);
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 10, 120, (char *)buff, 1);
+
     FixBuffer(epd_temp, epd_buffer, resolution_w, resolution_h);
     EPD_Display(epd_buffer, NULL, resolution_w * resolution_h / 8, full_or_partial);
 }
@@ -353,7 +362,7 @@ void update_time_scene(struct date_time _time, uint16_t battery_mv, int16_t temp
         epd_wait_update = 0;
     }
 
-    else if (_time.tm_min != minute_refresh)
+    else if (_time.tm_hour == 0 && _time.tm_min == 0)
     {
         minute_refresh = _time.tm_min;
         if (_time.tm_hour != hour_refresh)
