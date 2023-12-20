@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+    <title>Electronic price tag BLE</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+
+      h2 {
+        font-size: 1.5em;
+      }
+
+      button {
+        padding: 8px 12px;
+        margin: 5px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background-color: #ddd;
+      }
+
+      h3 {
+        font-size: 1.2em;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      select {
+        padding: 5px;
+        margin: 5px;
+      }
+
+      #canvas-box {
+        margin-top: 20px;
+      }
+
+      #canvas {
+        border: 1px solid black;
+      }
+
+      #tool-box {
+        margin-bottom: 10px;
+      }
+
+      #edit-font {
+        max-width: 250px;
+        position: absolute;
+        border: 1px solid black;
+        background-color: rgba(0, 0, 0, 0);
+        display: none;
+        overflow: auto;
+      }
+    </style>
+    <script type="application/javascript" src="js/dithering.js"></script>
+    <script type="application/javascript" src="js/utils.js"></script>
+  </head>
+
+  <body>
+    <script>
+      let canvas_width = 250;
+      let canvas_height = 122; //HOTFIX// height is not 128 bc somehow it loses 6 pixels at bottom (lazy to fix it). Side effect: maybe it will smush the picture or drawing.
+
+      let bleDevice;
+      let gattServer;
+      let epdService;
+      let rxtxService;
+      let epdCharacteristic;
+      let rxtxCharacteristic;
+      let reconnectTrys = 0;
+
+      function delay(delayInms) {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(2);
+          }, delayInms);
+        });
+      }
+
+      function resetVariables() {
+        gattServer = null;
+        epdService = null;
+        epdCharacteristic = null;
+        rxtxCharacteristic = null;
+        rxtxService = null;
+        document.getElementById("log").value = "";
+      }
+
+      async function handleError(error) {
+        console.log(error);
+        resetVariables();
+        if (bleDevice == null) return;
+        if (reconnectTrys <= 5) {
+          reconnectTrys++;
+          await connect();
+        } else {
+          addLog("Was not able to connect, aborting");
+          reconnectTrys = 0;
+        }
+      }
+
+      async function sendCommand(cmd) {
+        if (epdCharacteristic) {
+          await epdCharacteristic.writeValueWithResponse(cmd);
+        } else {
+          addLog("Service is not available. Is the Bluetooth connected ?");
+        }
+      }
+
+      async function clearScreen(cmd) {
+        addLog("Refresh screen");
+        await triggerEpdCmd(`00${cmd}`);
+        await triggerEpdCmd("01");
+      }
+
+      async function rxTxSendCommand(cmd) {
+        if (rxtxCharacteristic) {
+          await rxtxCharacteristic.writeValueWithResponse(cmd);
+        } else {
+          addLog("Service is not available. Is the Bluetooth connected ?");
+        }
+      }
+
+      async function upload_tiff_image() {
+        const startTime = new Date().getTime();
+        const buffer = await document
+          .getElementById("tiff_file")
+          .files[0].arrayBuffer();
+        const arr = bytesToHex(buffer);
+
+        addLog(`Uploading tiff, size ${arr.length / 1024}KB`);
+
+        await sendCommand(hexToBytes("0000"));
+
+        await sendCommand(hexToBytes("020000"));
+
+        const step = 480;
+        let partIndex = 0;
+        for (let i = 0; i < arr.length; i += step) {
+          addLog(
+            `Uploading block ${partIndex + 1}. Block size: ${step + 1}byte`
+          );
+          await sendCommand(hexToBytes("03" + arr.slice(i, i + step)));
+          partIndex += 1;
+        }
+
+        await sendCommand(hexToBytes("04"));
+        addLog(
+          `Uploading tiff is completed${
+            (new Date().getTime() - startTime) / 1000
+          }s`
+        );
+      }
+
+      async function sendBufferData(value, type) {
+        addLog(`Sending picture: ${type}, size ${value.length / 2 / 1024}KB`);
+        let code = "ff";
+        if (type === "bwr") {
+          code = "00";
+        }
+        const step = 480;
+        let partIndex = 0;
+        for (let i = 0; i < value.length; i += step) {
+          addLog(
+            `Sending ${partIndex + 1} chunk. Block size: ${
+              step / 2 + 4
+            }byte. Starting point: ${i / 2}`
+          );
+          await sendCommand(
+            hexToBytes(
+              "03" + code + intToHex(i / 2, 2) + value.substring(i, i + step)
+            )
+          );
+          partIndex += 1;
+        }
+      }
+
+      async function upload_image() {
+        const canvas = document.getElementById("canvas");
+
+        const startTime = new Date().getTime();
+
+        await sendCommand(hexToBytes("0000"));
+
+        await sendCommand(hexToBytes("020000"));
+
+        await sendBufferData(bytesToHex(canvas2bytes(canvas)), "bw");
+        await sendBufferData(bytesToHex(canvas2bytes(canvas, "bwr")), "bwr");
+
+        await sendCommand(hexToBytes("0101"));
+
+        addLog(
+          `Refresh completed ${(new Date().getTime() - startTime) / 1000}s`
+        );
+      }
+
+      async function upload_epd_buffer() {
+        const startTime = new Date().getTime();
+        const value = document
+          .getElementById("buffer")
+          .value.replace(/(?:\r\n|\r|\n|,|0x| )/g, "");
+
+        addLog(`Refreshing screen memory, size ${value.length / 1024}KB`);
+
+        await sendCommand(hexToBytes("0000"));
+
+        await sendCommand(hexToBytes("020000"));
+
+        await sendBufferData(value, "bw");
+
+        await delay(150);
+
+        await sendCommand(hexToBytes("0101"));
+
+        addLog(
+          `Refresh completed ${(new Date().getTime() - startTime) / 1000}s`
+        );
+      }
+
+      async function setTime() {
+        const { unixNow, localeTimeString, year, month, day, week } =
+          getUnixTime();
+
+        addLog(
+          "Setting time: " + localeTimeString + " : dd" + intToHex(unixNow, 4)
+        );
+        await rxTxSendCommand(
+          hexToBytes(
+            "dd" +
+              [
+                intToHex(unixNow, 4),
+                intToHex(year, 2),
+                intToHex(month, 1),
+                intToHex(day, 1),
+                intToHex(week, 1),
+              ].join("")
+          )
+        );
+
+        await rxTxSendCommand(hexToBytes("e2"));
+      }
+
+      async function triggerRxTxCmd(cmd) {
+        addLog(`Sending command: ${cmd}`);
+        await rxTxSendCommand(hexToBytes(cmd));
+      }
+
+      async function triggerEpdCmd(cmd) {
+        addLog(`Sending command: ${cmd}`);
+        await sendCommand(hexToBytes(cmd));
+      }
+
+      function disconnect() {
+        resetVariables();
+        addLog("Connection is broken.");
+        document.getElementById("connectbutton").innerHTML = "Connect";
+      }
+
+      async function preConnect() {
+        if (gattServer != null && gattServer.connected) {
+          if (bleDevice != null && bleDevice.gatt.connected)
+            bleDevice.gatt.disconnect();
+        } else {
+          reconnectTrys = 0;
+          bleDevice = await navigator.bluetooth.requestDevice({
+            optionalServices: [
+              "0000221f-0000-1000-8000-00805f9b34fb",
+              "00001f10-0000-1000-8000-00805f9b34fb",
+              "13187b10-eba9-a3ba-044e-83d3217d9a38",
+            ],
+            acceptAllDevices: true,
+          });
+          await bleDevice.addEventListener(
+            "gattserverdisconnected",
+            disconnect
+          );
+          try {
+            await connect();
+          } catch (e) {
+            await handleError(e);
+          }
+        }
+      }
+
+      async function connectRXTX() {
+        rxtxService = await gattServer.getPrimaryService(
+          "00001f10-0000-1000-8000-00805f9b34fb"
+        );
+        addLog("> Find the serial port service");
+
+        rxtxCharacteristic = await rxtxService.getCharacteristic(
+          "00001f1f-0000-1000-8000-00805f9b34fb"
+        );
+        addLog("> Serial service is linked");
+      }
+
+      async function reConnect() {
+        connectTrys = 0;
+        if (bleDevice != null && bleDevice.gatt.connected)
+          bleDevice.gatt.disconnect();
+        resetVariables();
+        addLog("Reconnect");
+        setTimeout(async function () {
+          await connect();
+        }, 300);
+      }
+
+      async function connect() {
+        if (epdCharacteristic == null) {
+          addLog("Connecting: " + bleDevice.name);
+
+          gattServer = await bleDevice.gatt.connect();
+          addLog("> Found GATT server");
+
+          epdService = await gattServer.getPrimaryService(
+            "13187b10-eba9-a3ba-044e-83d3217d9a38"
+          );
+          addLog("> Service available");
+
+          epdCharacteristic = await epdService.getCharacteristic(
+            "4b646063-6264-f3a7-8941-e65356ea82fe"
+          );
+          addLog("> Service is connected");
+
+          await epdCharacteristic.startNotifications();
+
+          epdCharacteristic.addEventListener(
+            "characteristicvaluechanged",
+            (event) => {
+              console.log("epd ret", bytesToHex(event.target.value.buffer));
+              const count = parseInt(
+                "0x" + bytesToHex(event.target.value.buffer)
+              );
+              addLog(`> [From screen]: Received ${count} byte data`);
+            }
+          );
+
+          document.getElementById("connectbutton").innerHTML = "Disconnect";
+          await connectRXTX();
+        }
+      }
+
+      function setStatus(statusText) {
+        document.getElementById("status").innerHTML = statusText;
+      }
+
+      function addLog(logTXT) {
+        const today = new Date();
+        const time =
+          ("0" + today.getHours()).slice(-2) +
+          ":" +
+          ("0" + today.getMinutes()).slice(-2) +
+          ":" +
+          ("0" + today.getSeconds()).slice(-2) +
+          " : ";
+
+        const dom = document.getElementById("log");
+
+        dom.innerHTML += time + logTXT + "<br>";
+        dom.scrollTop = dom.scrollHeight;
+      }
+
+      function getUnixTime() {
+        const hourOffset = document.getElementById("hour-offset").value;
+        const unixNow =
+          Math.round(Date.now() / 1000) +
+          60 * 60 * hourOffset -
+          new Date().getTimezoneOffset() * 60;
+
+        const date = new Date(
+          (unixNow + new Date().getTimezoneOffset() * 60) * 1000
+        );
+        const localeTimeString = date.toLocaleTimeString();
+
+        return {
+          unixNow,
+          localeTimeString,
+          year: date.getFullYear(),
+          month: date.getMonth() + 1,
+          day: date.getDate(),
+          week: date.getDay() || 7,
+        };
+      }
+
+      async function update_image() {
+        const image_file = document.getElementById("image_file");
+        if (image_file.files.length > 0) {
+          const file = image_file.files[0];
+
+          const canvas = document.getElementById("canvas");
+          const ctx = canvas.getContext("2d");
+
+          const image = new Image();
+          image.src = URL.createObjectURL(file);
+          image.onload = function (event) {
+            URL.revokeObjectURL(this.src);
+            ctx.drawImage(
+              image,
+              0,
+              0,
+              image.width,
+              image.height,
+              0,
+              0,
+              canvas_width,
+              canvas_height
+            );
+            convert_dithering();
+          };
+        }
+      }
+
+      function get_position(canvas, x, y) {
+        let rect = canvas.getBoundingClientRect();
+        return {
+          x: x - rect.left * (canvas_width / rect.width),
+          y: y - rect.top * (canvas_height / rect.height),
+        };
+      }
+
+      function clear_canvas() {
+        if (confirm("确认清除屏幕?")) {
+          const canvas = document.getElementById("canvas");
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "white";
+          ctx.fillRect(0, 0, canvas_width, canvas_height);
+        }
+      }
+
+      function convert_dithering() {
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        const mode = document.getElementById("dithering").value;
+        if (mode.startsWith("bwr")) {
+          ditheringCanvasByPalette(canvas, bwrPalette, mode);
+        } else {
+          dithering(
+            ctx,
+            canvas_width,
+            canvas_height,
+            parseInt(document.getElementById("threshold").value),
+            mode
+          );
+        }
+      }
+
+      document.body.onload = () => {
+        setInterval(() => {
+          const { localeTimeString, year, month, day, week } = getUnixTime();
+          document.getElementById(
+            "time-setter"
+          ).innerText = `Set Time to: ${year}-${month}-${day} ${localeTimeString}`;
+        }, 1000);
+
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas_width, canvas_height);
+
+        let is_allow_drawing = false;
+        let is_allow_move_editor = false;
+        const image_mode = document.getElementById("canvas-mode");
+        const paint_size = document.getElementById("paint-size");
+        const paint_color = document.getElementById("paint-color");
+        const editor = document.getElementById("edit-font");
+        const font = document.getElementById("font");
+        document.getElementById("dithering").value = "bwr_Atkinson";
+        image_mode.value = "paint";
+        paint_color.value = "black";
+        font.value = "黑体";
+
+        editor.onmousemove = function (e) {
+          editor.style.fontSize = `${paint_size.value * 10}px`;
+          editor.style.color = paint_color.value;
+          editor.style.fontFamily = font.value;
+          editor.style.fontWeight = "bold";
+
+          if (is_allow_move_editor) {
+            const { x, y } = get_position(canvas, e.clientX, e.clientY);
+            if (x < 0 || y < 0 || x > canvas_width || y > canvas_height) {
+              return;
+            }
+
+            editor.style.left = `${e.clientX - 20}px`;
+            editor.style.top = `${e.clientY - 20}px`;
+          }
+        };
+
+        editor.onmousedown = function (e) {
+          is_allow_move_editor = true;
+        };
+
+        editor.onmouseup = function (e) {
+          is_allow_move_editor = false;
+        };
+
+        document.getElementById("update-text").onclick = function () {
+          if (!editor.value.length) {
+            alert("Please enter text first");
+            return;
+          }
+          editor.style.display = "none";
+          ctx.beginPath();
+          ctx.font = `bold ${paint_size.value * 10}px ${font.value}`;
+          ctx.fillStyle = paint_color.value;
+          const { x, y } = get_position(
+            canvas,
+            parseInt(editor.style.left),
+            parseInt(editor.style.top) + paint_size.value * 10
+          );
+
+          ctx.fillText(editor.value, x, y);
+        };
+
+        image_mode.onchange = function (e) {
+          if (image_mode.value === "font") {
+            document.getElementById("update-text").style.display =
+              "inline-block";
+            document.getElementById("font").style.display = "inline-block";
+
+            editor.style.display = "block";
+            editor.style.left = `${e.clientX}px`;
+            editor.style.top = `${e.clientY}px`;
+            return;
+          }
+          document.getElementById("update-text").style.display = "none";
+          document.getElementById("font").style.display = "none";
+          editor.style.display = "none";
+        };
+
+        paint_size.onchange = function () {
+          if (image_mode.value === "font") {
+            editor.style.fontSize = `${paint_size.value * 10}px`;
+          }
+        };
+
+        paint_color.onchange = function () {
+          if (image_mode.value === "font") {
+            editor.style.color = paint_color.value;
+          }
+        };
+
+        font.onchange = function () {
+          if (image_mode.value === "font") {
+            editor.style.fontFamily = font.value;
+          }
+        };
+
+        canvas.onmousedown = function (e) {
+          let ele = get_position(canvas, e.clientX, e.clientY);
+          let { x, y } = ele;
+
+          switch (image_mode.value) {
+            case "paint":
+              is_allow_drawing = true;
+              ctx.beginPath();
+              ctx.moveTo(x, y);
+              break;
+            case "font":
+              editor.style.display = "block";
+              editor.style.left = `${e.clientX}px`;
+              editor.style.top = `${e.clientY}px`;
+              editor.style.fontSize = `${paint_size.value * 10}px`;
+              editor.style.color = paint_color.value;
+              editor.style.fontFamily = font.value;
+              editor.style.fontWeight = "bold";
+
+              break;
+            default:
+              break;
+          }
+        };
+
+        canvas.onmousemove = (e) => {
+          let ele = get_position(canvas, e.clientX, e.clientY);
+          let { x, y } = ele;
+          switch (image_mode.value) {
+            case "paint":
+              if (is_allow_drawing) {
+                ctx.lineWidth = paint_size.value;
+                ctx.strokeStyle = paint_color.value;
+                ctx.lineTo(x, y);
+                ctx.stroke();
+              }
+              break;
+            case "font":
+              break;
+
+            default:
+              break;
+          }
+        };
+
+        canvas.onmouseup = function () {
+          switch (image_mode.value) {
+            case "paint":
+              is_allow_drawing = false;
+              break;
+
+            case "font":
+              editor.focus();
+              is_allow_move_editor = false;
+              break;
+
+            default:
+              break;
+          }
+        };
+
+        canvas.onmouseleave = function () {
+          if (image_mode.value === "paint") {
+            is_allow_drawing = false;
+          }
+        };
+      };
+    </script>
+    <h2>Electronic Price Tag Bluetooth Controller</h2>
+    <div id="log-box">
+      Log:
+      <br />
+      <div
+        id="log"
+        style="
+          overflow: scroll;
+          border: solid 1px;
+          /* height: 200px; */
+          height: auto;
+          max-height: 300px;
+          width: 1000px;
+          margin-bottom: 20px;
+        "
+      >
+        <!-- Log content will be displayed here -->
+      </div>
+    </div>
+
+    <button id="connectbutton" type="button" onclick="preConnect();">
+      Connect
+    </button>
+    <button type="button" onclick="reConnect();">Reconnect</button>
+    <button
+      type="button"
+      onclick="document.getElementById('log').innerHTML = '';"
+    >
+      Clear Log
+    </button>
+    <br /><br />
+
+    <h3>Command Control</h3>
+    <input type="text" id="cmdTXT" value="0055" />
+	<button type="button" onclick="triggerEpdCmd(document.getElementById('cmdTXT').value);">Send Command</button>
+
+    <br />
+    <!-- Add tooltips for the buttons below -->
+    <button
+      type="button"
+      onclick="triggerRxTxCmd('e100')"
+      title="Click to upload an image permanently displayed on the screen"
+    >
+      Set as Image Mode
+    </button>
+    <button
+      type="button"
+      onclick="triggerRxTxCmd('e101')"
+      title="Click to switch to Clock Mode 1"
+    >
+      Set as Clock Mode 1
+    </button>
+    <button
+      type="button"
+      onclick="triggerRxTxCmd('e102')"
+      title="Click to switch to Clock Mode 2"
+    >
+      Set as Clock Mode 2
+    </button>
+    <br />
+    <button type="button" onclick="clearScreen('00')">
+      Clear Screen (Black)
+    </button>
+    <button type="button" onclick="clearScreen('ff')">
+      Clear Screen (White)
+    </button>
+    <button type="button" onclick="triggerEpdCmd('0101')">
+      Refresh Screen (Full Update)
+    </button>
+    <button type="button" onclick="triggerEpdCmd('0100')">
+      Refresh Screen (Partial Update)
+    </button>
+    <br /><br />
+
+    <h3>Set Time</h3>
+    <button id="time-setter" onclick="setTime()">Set Time to:</button>
+    <br />
+    Offset +<input
+      type="number"
+      max="24"
+      min="0"
+      id="hour-offset"
+      value="0"
+      style="width: 40px"
+    />Hours
+
+    <h3>Upload Image to Screen</h3>
+    <input
+      type="file"
+      id="image_file"
+      onchange="update_image()"
+      accept=".png,.jpg,.bmp,.webp"
+    />
+    Dithering Algorithm:
+    <select id="dithering" title="Dithering Algorithm">
+      <optgroup label="Black and White">
+        <option value="none">Binary</option>
+        <option value="bayer">Bayer</option>
+        <option value="floydsteinberg">Floyd-Steinberg</option>
+        <option value="Atkinson">Atkinson</option>
+      </optgroup>
+      <optgroup label="Black White Red Multicolor">
+        <option value="bwr_floydsteinberg">
+          Black White Red Floyd-Steinberg
+        </option>
+        <option value="bwr_Atkinson">Black White Red Atkinson</option>
+      </optgroup>
+    </select>
+    Threshold:
+    <input type="number" max="255" min="0" value="128" id="threshold" />
+    <button onclick="update_image()">Reload</button>
+    <br />
+
+    <div id="canvas-box">
+      <div id="tool-box">
+        Mode:
+        <select id="canvas-mode">
+          <option value="paint">Brush</option>
+          <option value="font" title="After inputting, click: Save Text Box">
+            Input Text
+          </option>
+        </select>
+        Brush/Text Size:
+        <input
+          type="number"
+          max="13"
+          min="1"
+          step="1"
+          value="3"
+          id="paint-size"
+        />
+        Brush Color:
+        <select id="paint-color">
+          <option value="red">Red</option>
+          <option value="white">White</option>
+          <option value="black">Black</option>
+        </select>
+
+        <select id="font" title="Font" style="display: none">
+          <option value="Microsoft YaHei">Microsoft YaHei</option>
+          <option value="SimHei">SimHei</option>
+          <option value="FangSong">FangSong</option>
+          <option value="SimSun">SimSun</option>
+          <option value="KaiTi_GB2312">KaiTi_GB2312</option>
+          <option value="STXingkai">STXingkai</option>
+        </select>
+        <button id="update-text" style="display: none">Save Text Box</button>
+        <button onclick="clear_canvas()">Clear Screen</button>
+      </div>
+      <input
+        id="edit-font"
+        style="
+          max-width: 250px;
+          position: absolute;
+          border: black solid 1px;
+          background-color: rgba(0, 0, 0, 0);
+          display: none;
+          overflow: auto;
+        "
+      />
+      <canvas
+        id="canvas"
+        width="250"
+        height="122"
+        style="border: black solid 1px"
+      ></canvas>
+      <br />
+      <button onclick="upload_image()" style="font-weight: bold">
+        Upload to Screen
+      </button>
+      <br />
+    </div>
+
+    <br />
+
+    <div id="tab_image">
+      <br />
+      <h3>Screen Control</h3>
+      <input type="file" />
+      <button type="button" onclick="upload_epd_buffer();">
+        Upload Image to Display Memory
+      </button>
+      <br />
+      <textarea id="buffer" rows="10" cols="90">
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFDFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFDFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFBFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFBFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFF7FFFFFFFFFFFFFFFC0FFFFFFFFFFFFFF7FFFFFFFFFFFFFFFC0FFFFFFFFFFFFFF7FFFFFFFFFFFFFFFC0FFFFFFFFFFFFFEFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFDFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFF3FFFFFFFFFFFFFFFFC0FFFFFFFFF000CE43FFFFFFFFFFFFFFC0FFFFFFE03FFF800FFFFFFFFFFFFFFFC0FFFFF0FFFFFFE01BFFFFFFFFFFFFFFC0FFFFCFFFFFFFFA05FFFFFFFFFFFFFFC0FFFFBFFFFFFFFE427FFFFFFFFFFFFFC0FFFF7FFFFFFFFD987FFFFFFFFFFFFFC0FFFEFFFFFFFFFF0E4FFFFFFFFFFFFFC0FFFDFFFFFFFFFF0307FFFFFFFFFFFFC0FFFDFFFBFFFFFFAF87FFFFFFFFFFFFC0FFFBFFFBFFFFFFFCE0FFFFFFFFFFFFC0FFFBFB7FFFFFFFFF707FFFFFFFFFFFC0FFF7FB7FFFFFFFF07CDFFFFFFFFFFFC0FFF7FAFFF7FFFFE3FC3FFFFFFFFFFFC0FFFFECFFE9FFFFFFFF17FFFFFFFFFFC0FFEFECFBF1FFFFFFFFD7FFFFFFFFFFC0FFEFECFBF1FFFFCFFFCFFFFFFFFFFFC0FFEFFD7BF1FFFFDC7F87FFFFFFFFFFC0FFDFF57BF0FFFFF81FEFFFFFFFFFFFC0FFDFF57BD6FFFFF06F87FFFFFFFFFFC0FFDFF5FBEAFF0F0037CFFFFFFFFFFFC0FFDFF5BFF1FEF7C017EFFFFFFFFFFFC0FFDFF9BFFFF9F7E01BE3FFFFFFFFFFC0FFDFFABFFFC7F7E01BC7FFFFFFFFFFC0FFDFFADFF83FF7201FDFFFFFFFFFFFC0FFDFFADFFFFFF70017DFFFFFFFFFFFC0FFDFFB5FFFFFFB00073FFFFFFFFFFFC0FFDFFF5FFFFFFBC01FBFFFFFFFFFFF00FFDFFDDFFC0677F0FF1FFFFFFFFE07C0FFEFFDEFFD7F8F9FFC7FFFFFFF83FFC0FFEFFDEFFEBFFFCF80FFFFFFC1FFFFC0FFF7FFEFDADFFFE403FFFFFE3FFFFFC0FFF7FEAFDA1FFFF907FFFFF3FFFFFFC0FFFBFEBFDC1FFFFE8FFFFFCFFFFFFFC0FFFBFF7FDC1FFFFF2FFFFF3FFFFFFFC0FFFDFF5FDC1FFFF87FFFC1FFFFFFFFC0FFFDFFD7DEDFFFFBFFFF3FFFFFFFFFC0FFFEFFA7DE3FFFA7FFFCFFFFFFFFFFC0FFFEFFA7EFFFFF0FFFFBFFFFFFFFFFC0FFFF7FEBEFFFFE3FFFF7FFFFFFFFFFC0FFFFBFDFF7FFFE7FFFEFFFFFFFFFFFC0FFFFDFDFFFFFE1FFFFDFFFFFFFFFFFC0FFFFEFEFFFFE3BFFFFBFFFFFFFFFFFC0FFFFF9FFFFE3FBFFFF7FFFFFFFFFFFC0FFFFFEFFFE3FFBFFFEFFFFFFFFFFFFC0FFFFFF8783FFF7FFFDFFFFFFFFFFFFC0FFFFFFFFFFFFF7FFFBFFFFFFFFFFFFC0FFFFFFFFFFFFF7FFE7FFFFFFFFFFFFC0FFFFFFFFFFFFF7FFCFFFFFFFFFFFFFC0FFFFFFFFFFFFF7FF9FFFFFFFFFFFFFC0FFFFFFFFFFFFEFFFBFFFFFFFFFFFFFC0FFFFFFFFFFFFEFFF7FFFFFFFFFFFFFC0FFFFFFFFFFFFEFFEFFFFFFFFFFFFFFC0FFFFFFFFFFFFDFFCFFFFFFFFFFFFFFC0FFFFFFFFFFFFDFF9FFFFFFFFFFFFFFC0FFFFFFFFFFFFDFF3FFFFFFFFFFFFFFC0FFFFFFFFFFFFDFF7FFFFFFFFFFFFFFC0FFFFFFFFFFFFBFEFFFFFFFFFFFFFFFC0FFFFFFFFFFFF7FEFFFFFFFFFFFFFFFC0FFFFFFFFFFFF7FDFFFFFFFFFFFFFFFC0FFFFFFFFFFFF7FDFFFFFFFFFFFFFFFC0FFFFFFFFFFFF7FDFFFFFFFFFFFFFFFC0FFFFFFFFFFFF7FDFFFFFFFFFFFFFFFC0FFFFFFFFFFFEC1DFFFFFFFFFFFFFFFC0FFFFFFFFFFFEBE5FFFFFFFFFFFFFFFC0FFFFFFFFFFFD3F9FFFFFFFFFFFFFFFC0FFFFFFFFFFFCFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFF80003FFFFFFFC0FFFFFFFFFFFFFFFFFF80001FFFFFFFC0FFFFFFFFFFFFFFFFFF00001FFFFFFFC0FFFFFFFFFFFFFFFFFF00000FFFFFFFC0FFFFFFFFFFFFFFFFFE00000FFFFFFFC0FFFFFFFFFFFFFFFFFE000007FFFFFFC0FFFFFFFFFFFFFFFFFE000007FFFFFFC0FFFFFFFFFFFFFFFFFC000007FFFFFFC0FFFFFFFFFFFFFFFFFC000007FFFFFFC0FFFFFFFFFFFFFFFFFC000003FFFFFFC0FFFFFFFFFFFFFFFFFC000003FFFFFFC0FFFFFFFFFFFFFFFFF8000003FFFFFFC0FFFFFFFFFC7FFFFFF8000003FFFFFFC0FFFFFFFFF81FFFFFF8000003FFFFFFC0FFFFFFFFF807FFFFF8000003FFFFFFC0FFFFFFFFF003FFFFF8080001FFFFFFC0FFFFFFFFF000FFFFFFFC0001FFFFFFC0FFFFFFFFF0007FFFFFFC0001FFFFFFC0FFFFFFFFE0003FFFFFE00001FFFFFFC0FFFFFFFFE0001FFFFF800001FFFFFFC0FFFFFFFFE0000FFFFE000001FFFFFFC0FFFFFFFFE00007FFF8000001FFFFFFC0FF000FFFC00003FFF0000001FFFFFFC0FF000000000001FFE0000001FFFFFFC0FF800000000000FFC0000001FFFFFFC0FFF800000000007F81180001FFFFFFC0FFF800000000003F01FE0000FFFFFFC0FFC000000000003E01E60000FFFFFFC0FFC000000000001FF0000000FFFFFFC0FFFC00000000001FF8000000FFFFFFC0FFFC00000000001FF8000000C7FFFFC0FFF000000000003FF8007EF807FFFFC0FFFE00000000007FF8007FFC07FFFFC0FFFF0000000000FFF800638C07FFFFC0FFF80000000000FFF8003EFC0FFFFFC0FFF80000000001FFF80000001FFFFFC0FFFFFFFFE00007FFF80000007FFFFFC0FFFFFFFFF0000FFFF8000000FFFFFFC0FFFFFFFFF0001FFFF8000001FFFFFFC0FFFFFFFFF8003FFFF8000003FFFFFFC0FFFFFFFFF8007FFFF800000FFFFFFFC0FFFFFFFFFC01FFFFF800003FFFFFFFC0FFFFFFFFFE03FFFFF80007FFFFFFFFC0FFFFFFFFFE0FFFFFF80007FFFFFFFFC0FFFFFFFFFF3FFFFFF80003FFFFFFFFC0FFFFFFFFFFFFFFFFFC000313FFFFFFC0FFFFFFFFFFFFFFFFFC000001FFFFFFC0FFFFFFFFFFFFFFFFFC000001FFFFFFC0FFFFFFFFFFFFFFFFFC000001FFFFFFC0FFFFFFFFFFFFFFFFFC000001FFFFFFC0FFFFFFFFFFFFFFFFFC000003FFFFFFC0FFFFFFFFFFFFFFFFFE000003FFFFFFC0FFFFFFFFFFFFFFFFFE000003FFFFFFC0FFFFFFFFFFFFFFFFFE000003FFFFFFC0FFFFFFFFFFFFFFFFFF000007FFFFFFC0FFFFFFFFFFFFFFFFFF000007FFFFFFC0FFFFFFFFFFFFFFFFFF00000FFFFFFFC0FFFFFFFFFFFFFFFFFF80000FFFFFFFC0FFFFFFFFFFFFFFFFFFC0001FFFFFFFC0FFFFFFFFFFFFFFFFFFFFFF7FFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFC0FFFFFFFFFFFFFF17FFFFFFFFFFFFFFC0FFFFFFFFFFFFFC5BFFFFFFFFFFFFFFC0FFFFFFFFFFF80EC007FFFFFFFFFFFFC0FFFFFFFFFFCFFFFBFFE01FFFFFFFFFC0FFFFFFFFFE7FFD01FFF8067FFFFFFFC0FFFFFFFFFDFFFCFE3FFFE01FFFFFFFC0FFFFFFFFF3FFFCFF5FFFF80FFFFFFFC0FFFFFFFFEFFFFDFF9FFFF8803FFFFFC0FFFFFFFF9FFFF9FF9FFFFF41DFFFFFC0FFFFFFFF7FFFF9FF9FFFFFFC03FFFFC0FFFFFFFEFF6FBBFFDFFFFFE80DFFFE40FFFFFFFDFED37B7DDFFFFFE98007F1C0FFFFFFFBFDB6F27EDFFFFFFE007FFFC0FFFFFFF7FDAEF2CECFFFFFF8E0F3C3C0FFFFFFEFFD6EF1B6CFFFFFFE7C07FF40FFFFFFDFFD6EF1A6CFFFFFFE318FFFC0FFFFFFBFFD6EF183CFFFFFFDFF807FC0FFFFFF7FFF7EF183CFFFFFFFF3E0FFC0FFFFFF7FFF5F7383CFFFFFFFFBF97FC0FFFFFEFFFF5F7283CFFFFFFE5E004FC0FFFFFEFFFF5FB282DFFFFFEFE0FF07C0FFFFFDFFFF5FFB4A9FFFFF39FF9E0F40FFFFFBFFFF5FFBE51FFFFC8DFFE7C1C0FFFFFBFFFF7FFBE6DF9FFC6FFFC1F0C0FFFFF7FFFF6FFBFDC06FFE9C0FFED8C0FFFFF7FFFDEFF9F31FF7FD3FFF7FFDC0FFFFEFFFFDAFFA08FFF7E3701F9FE040FFFFEFFFFBBFFBE7FFFBEAC007DC7040FFFFEFFFFBBFFBCFFFFDFCC007FFC000FFFFFFFFFBBFFFBFFFFDFE8003F83840FFFFDFFFFBBFFFBFFFFDFF8003EF7E00FFFFDFFFFBBFFFDFFFFFE78001EFCB80FFFFDFFFFFBFFFC7FFFBF78001EFFC80FFFFDFFFFFBFFBF9FFFBE68001EFF300FFFFDFFFFF7FFE0C0FFBFE8003EDFC00FFFFDFFFF77FF9F678F3BF400FDFC0C0FFFFDFFFF6DFF9F9FF07EFA03FBEE180FFFFDFFFF6FFFBFE3FFFF7C07C7B0F80FFFFDFFFF6BFF3FF3FFFFFE4F3FFF840FFFFDFFFF7BFF32F9FFFF3FB8E6000C0FFFFEFFFF5BF76CF9FFFFCFCFF1FFEC0FFFFEFFFF5BF75F3DFFFFE0FF33FE0C0FFFFEFFFF5BCF3B5DFFFFF03FFE000C0FFFFF7FFF5FDF3A6DFFFFFF581FFFBC0FFFFFFFFF57BF306DFFFFFFFE3FF81C0FFFFFBFFF57BE706DFFFFFFFFC9C00C0FFFFFDFFFD7FE70ECFFFFFFFFEF10F40FFFFFDFFFD7FE70ECFFFFFFFFFCFDFC0FFFFFEFFFC7FE30ECFFFFFFFFFFDBFC0FFFFFF7FFEBBEB0DCFFFFFFFF2707FC0FFFFFFBFFEBBEB5DCFFFFFFFFFCE7FC0FFFFFFDFF75FE53BCFFFFFFFFC7DFFC0FFFFFFEFF75FE7FFCFFFFFFFFBF0FFC0FFFFFFF7F7AFE7FFCFFFFFFF0F01FFC0FFFFFFFBF7A7E7FFAFFFFFF2FFF6FFC0FFFFFFFDFFFFE7FFBFFFFFFEFF07FFC0FFFFFFFE7FFFF3FF5FFFFF8383CFFFC0</textarea
+      ><br />
+      <br />
+    </div>
+  </body>
+</html>
