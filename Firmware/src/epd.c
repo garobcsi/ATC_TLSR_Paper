@@ -30,7 +30,7 @@ RAM uint8_t epd_wait_update = 0;
 RAM uint8_t hour_refresh = 100;
 RAM uint8_t minute_refresh = 100;
 
-const char *BLE_conn_string[] = {"BLE 0", "BLE 1"};
+const char *BLE_conn_string[] = {"BLE F", "BLE T"};
 RAM uint8_t epd_temperature_is_read = 0;
 RAM uint8_t epd_temperature = 0;
 
@@ -306,7 +306,7 @@ _attribute_ram_code_ void epd_display(struct date_time _time, uint16_t battery_m
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 17, (char *)buff, 1);
 
     sprintf(buff, "%s", BLE_conn_string[ble_get_connected()]);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 218, 20, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 196, 17, (char *)buff, 1);
     
     sprintf(buff, "%02d:%02d", _time.tm_hour, _time.tm_min);
     obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 50, 65, (char *)buff, 1);
