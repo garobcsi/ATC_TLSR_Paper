@@ -6,9 +6,10 @@
 #include "epd_spi.h"
 #include "epd_bw_213.h"
 #include "epd_bwr_213.h"
+#include "epd_bwr_350.h"
+#include "epd_bwy_350.h"
 #include "epd_bw_213_ice.h"
-//#include "epd_bwr_154.h"
-#include "epd_bwr_296.h"
+#include "epd_bwr_154.h"
 #include "drivers.h"
 #include "stack/ble/ble.h"
 
@@ -19,11 +20,10 @@
 extern const uint8_t ucMirror[];
 #include "font_60.h"
 #include "font16.h"
-#include "font16zh.h"
 #include "font30.h"
 
-RAM uint8_t epd_model = 0; // 0 = Undetected, 1 = BW213, 2 = BWR213, 3 = BWR154, 4 = BW213ICE, 5 BWR296
-const char *epd_model_string[] = {"NC", "BW213", "BWR213", "BWR154", "213ICE", "BWR296"};
+RAM uint8_t epd_model = 0; // 0 = Undetected, 1 = BW213, 2 = BWR213, 3 = BWR154, 4 = BW213ICE, 5 = BWR350
+const char *epd_model_string[] = {"NC", "BW213", "BWR213", "BWR154", "213ICE", "BWR350", "BWY350"};
 RAM uint8_t epd_update_state = 0;
 
 RAM uint8_t epd_scene = 2;
@@ -58,8 +58,6 @@ void set_EPD_wait_flush() {
     epd_wait_update = 1;
 }
 
-
-
 // Here we detect what E-Paper display is connected
 _attribute_ram_code_ void EPD_detect_model(void)
 {
@@ -75,18 +73,14 @@ _attribute_ram_code_ void EPD_detect_model(void)
     WaitMs(10);
 
     // Here we neeed to detect it
-    if (EPD_BWR_296_detect())
-    {
-        epd_model = 5;
-    }
-    else if (EPD_BWR_213_detect())
+    if (EPD_BWR_213_detect())
     {
         epd_model = 2;
     }
-//    else if (EPD_BWR_154_detect())// Right now this will never trigger, the 154 is same to 213BWR right now.
-//    {
-//        epd_model = 3;
-//    }
+    else if (EPD_BWR_154_detect())// Right now this will never trigger, the 154 is same to 213BWR right now.
+    {
+        epd_model = 3;
+    }
     else if (EPD_BW_213_ice_detect())
     {
         epd_model = 4;
@@ -121,10 +115,14 @@ _attribute_ram_code_ uint8_t EPD_read_temp(void)
         epd_temperature = EPD_BW_213_read_temp();
     else if (epd_model == 2)
         epd_temperature = EPD_BWR_213_read_temp();
-//    else if (epd_model == 3)
-//        epd_temperature = EPD_BWR_154_read_temp();
-    else if (epd_model == 4 || epd_model == 5)
+    else if (epd_model == 3)
+        epd_temperature = EPD_BWR_154_read_temp();
+    else if (epd_model == 4)
         epd_temperature = EPD_BW_213_ice_read_temp();
+    else if (epd_model == 5)
+        epd_temperature = EPD_BWR_350_read_temp();
+    else if (epd_model == 6)
+        epd_temperature = EPD_BWY_350_read_temp();
 
     EPD_POWER_OFF();
 
@@ -152,13 +150,14 @@ _attribute_ram_code_ void EPD_Display(unsigned char *image, unsigned char *red_i
         epd_temperature = EPD_BW_213_Display(image, size, full_or_partial);
     else if (epd_model == 2)
         epd_temperature = EPD_BWR_213_Display(image, size, full_or_partial);
-//    else if (epd_model == 3)
-//        epd_temperature = EPD_BWR_154_Display(image, size, full_or_partial);
+    else if (epd_model == 3)
+        epd_temperature = EPD_BWR_154_Display(image, size, full_or_partial);
     else if (epd_model == 4)
         epd_temperature = EPD_BW_213_ice_Display(image, size, full_or_partial);
     else if (epd_model == 5)
-        epd_temperature = EPD_BWR_296_Display_BWR(image, red_image, size, full_or_partial);
-        //epd_temperature = EPD_BWR_296_Display(image, size, full_or_partial);
+        epd_temperature = EPD_BWR_350_Display(image, size, full_or_partial);
+    else if (epd_model == 6)
+        epd_temperature = EPD_BWY_350_Display(image, size, full_or_partial);
 
     epd_temperature_is_read = 1;
     epd_update_state = 1;
@@ -173,9 +172,9 @@ _attribute_ram_code_ void epd_set_sleep(void)
         EPD_BW_213_set_sleep();
     else if (epd_model == 2)
         EPD_BWR_213_set_sleep();
-//    else if (epd_model == 3)
-//        EPD_BWR_154_set_sleep();
-    else if (epd_model == 4 || epd_model == 5)
+    else if (epd_model == 3)
+        EPD_BWR_154_set_sleep();
+    else if (epd_model == 4)
         EPD_BW_213_ice_set_sleep();
 
     EPD_POWER_OFF();
@@ -293,9 +292,14 @@ _attribute_ram_code_ void epd_display(struct date_time _time, uint16_t battery_m
         resolution_h = 104;
     }
     else if (epd_model == 5)
-    {
+    {// Just as placeholder right now, needs a complete different driving because of RAM limits
         resolution_w = 250;
-        resolution_h = 128;
+        resolution_h = 128; // 122 real pixel, but needed to have a full byte
+    }
+    else if (epd_model == 6)
+    {// Just as placeholder right now, needs a complete different driving because of RAM limits
+        resolution_w = 250;
+        resolution_h = 128; // 122 real pixel, but needed to have a full byte
     }
 
     epd_clear();
@@ -304,6 +308,7 @@ _attribute_ram_code_ void epd_display(struct date_time _time, uint16_t battery_m
     obdFill(&obd, 0, 0); // fill with white
 
     char buff[100];
+    battery_level = get_battery_level(battery_mv);
     sprintf(buff, "ESL_%02X%02X%02X %s", mac_public[2], mac_public[1], mac_public[0], epd_model_string[epd_model]);
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 17, (char *)buff, 1);
     sprintf(buff, "%s", BLE_conn_string[ble_get_connected()]);
@@ -390,14 +395,6 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     sprintf(buff, "ESL_%02X%02X%02X", mac_public[2], mac_public[1], mac_public[0]);
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 17, (char *)buff, 1);
 
-    if (ble_get_connected()) {
-        sprintf(buff, "78%s", "234");
-    } else {
-        sprintf(buff, "78%s", "56");
-    }
-
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16_zh, 120, 21, (char *)buff, 1);
-
     obdRectangle(&obd, 252, 10, 255, 14, 1, 1);
     obdRectangle(&obd, 255, 2, 295, 22, 1, 1);
 
@@ -407,7 +404,7 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     obdRectangle(&obd, 0, 25, 295, 27, 1, 1);
 
     sprintf(buff, "%02d:%02d", _time.tm_hour, _time.tm_min);
-    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 35, 85, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 35, 70, (char *)buff, 1);
 
     sprintf(buff, "   %d'C", EPD_read_temp());
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 50, (char *)buff, 1);
@@ -415,27 +412,13 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     obdRectangle(&obd, 216, 60, 295, 62, 1, 1);
 
     sprintf(buff, " %dmV", battery_mv);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 84, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 60, (char *)buff, 1);
 
     obdRectangle(&obd, 214, 27, 216, 99, 1, 1);
     obdRectangle(&obd, 0, 97, 295, 99, 1, 1);
 
     sprintf(buff, "%d-%02d-%02d", _time.tm_year, _time.tm_month, _time.tm_day);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 10, 120, (char *)buff, 1);
-
-    if (_time.tm_week == 7) {
-        sprintf(buff, "9:%c", _time.tm_week + 0x20 + 6);
-    } else {
-        sprintf(buff, "9:%c", _time.tm_week + 0x20);
-    }
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16_zh, 120, 122, (char *)buff, 1);
-
-    if (_time.tm_hour > 7 && _time.tm_hour < 20) {
-        sprintf(buff, "%s", "EFGH");
-    } else {
-        sprintf(buff, "%s", "ABCD");
-    }
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16_zh, 200, 122, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 10, 50, (char *)buff, 1);
 
     FixBuffer(epd_temp, epd_buffer, epd_width, epd_height);
 
