@@ -354,18 +354,12 @@ void update_time_scene(struct date_time _time, uint16_t battery_mv, int16_t temp
         epd_wait_update = 0;
     }
 
-    else if (_time.tm_hour == 0 && _time.tm_min == 0)
+    else if (_time.tm_min != minute_refresh)
     {
         minute_refresh = _time.tm_min;
-        if (_time.tm_hour != hour_refresh)
-        {
-            hour_refresh = _time.tm_hour;
-            scene(_time, battery_mv, temperature, 1);
-        }
-        else
-        {
-            scene(_time, battery_mv, temperature, 0);
-        }
+        hour_refresh = _time.tm_hour;
+
+        scene(_time, battery_mv, temperature, _time.tm_hour == 0 && _time.tm_min == 0);
     }
 }
 
