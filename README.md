@@ -1,3 +1,10 @@
+# TL;DR
+This repo was made by splicing these two repos: [ATC_TLSR_Paper](https://github.com/atc1441/ATC_TLSR_Paper) [stellar-L3N-etag](https://github.com/reece15/stellar-L3N-etag)
+
+Updated ota controll panel (for the firmweare): [web](https://garobcsi.github.io/ATC_TLSR_Paper/web_tools/) 
+
+This firmweare made to work on S3N@ E31HA. Other models may not work correctly.
+
 # ATC_TLSR_Paper
 Custom BLE firmware for Hanshow E-Paper Shelf Labels / Price Tags using the TLSR8359 ARM SOC
 
