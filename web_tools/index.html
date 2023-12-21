@@ -462,159 +462,39 @@
         ctx.fillRect(0, 0, canvas_width, canvas_height);
 
         let is_allow_drawing = false;
-        let is_allow_move_editor = false;
-        const image_mode = document.getElementById("canvas-mode");
         const paint_size = document.getElementById("paint-size");
         const paint_color = document.getElementById("paint-color");
-        const editor = document.getElementById("edit-font");
-        const font = document.getElementById("font");
+
         document.getElementById("dithering").value = "bwr_Atkinson";
-        image_mode.value = "paint";
         paint_color.value = "black";
-        font.value = "black body";
-
-        editor.onmousemove = function (e) {
-          editor.style.fontSize = `${paint_size.value * 10}px`;
-          editor.style.color = paint_color.value;
-          editor.style.fontFamily = font.value;
-          editor.style.fontWeight = "bold";
-
-          if (is_allow_move_editor) {
-            const { x, y } = get_position(canvas, e.clientX, e.clientY);
-            if (x < 0 || y < 0 || x > canvas_width || y > canvas_height) {
-              return;
-            }
-
-            editor.style.left = `${e.clientX - 20}px`;
-            editor.style.top = `${e.clientY - 20}px`;
-          }
-        };
-
-        editor.onmousedown = function (e) {
-          is_allow_move_editor = true;
-        };
-
-        editor.onmouseup = function (e) {
-          is_allow_move_editor = false;
-        };
-
-        document.getElementById("update-text").onclick = function () {
-          if (!editor.value.length) {
-            alert("Please enter text first");
-            return;
-          }
-          editor.style.display = "none";
-          ctx.beginPath();
-          ctx.font = `bold ${paint_size.value * 10}px ${font.value}`;
-          ctx.fillStyle = paint_color.value;
-          const { x, y } = get_position(
-            canvas,
-            parseInt(editor.style.left),
-            parseInt(editor.style.top) + paint_size.value * 10
-          );
-
-          ctx.fillText(editor.value, x, y);
-        };
-
-        image_mode.onchange = function (e) {
-          if (image_mode.value === "font") {
-            document.getElementById("update-text").style.display =
-              "inline-block";
-            document.getElementById("font").style.display = "inline-block";
-
-            editor.style.display = "block";
-            editor.style.left = `${e.clientX}px`;
-            editor.style.top = `${e.clientY}px`;
-            return;
-          }
-          document.getElementById("update-text").style.display = "none";
-          document.getElementById("font").style.display = "none";
-          editor.style.display = "none";
-        };
-
-        paint_size.onchange = function () {
-          if (image_mode.value === "font") {
-            editor.style.fontSize = `${paint_size.value * 10}px`;
-          }
-        };
-
-        paint_color.onchange = function () {
-          if (image_mode.value === "font") {
-            editor.style.color = paint_color.value;
-          }
-        };
-
-        font.onchange = function () {
-          if (image_mode.value === "font") {
-            editor.style.fontFamily = font.value;
-          }
-        };
 
         canvas.onmousedown = function (e) {
           let ele = get_position(canvas, e.clientX, e.clientY);
           let { x, y } = ele;
 
-          switch (image_mode.value) {
-            case "paint":
-              is_allow_drawing = true;
-              ctx.beginPath();
-              ctx.moveTo(x, y);
-              break;
-            case "font":
-              editor.style.display = "block";
-              editor.style.left = `${e.clientX}px`;
-              editor.style.top = `${e.clientY}px`;
-              editor.style.fontSize = `${paint_size.value * 10}px`;
-              editor.style.color = paint_color.value;
-              editor.style.fontFamily = font.value;
-              editor.style.fontWeight = "bold";
-
-              break;
-            default:
-              break;
-          }
+          is_allow_drawing = true;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
         };
 
         canvas.onmousemove = (e) => {
           let ele = get_position(canvas, e.clientX, e.clientY);
           let { x, y } = ele;
-          switch (image_mode.value) {
-            case "paint":
-              if (is_allow_drawing) {
-                ctx.lineWidth = paint_size.value;
-                ctx.strokeStyle = paint_color.value;
-                ctx.lineTo(x, y);
-                ctx.stroke();
-              }
-              break;
-            case "font":
-              break;
 
-            default:
-              break;
+          if (is_allow_drawing) {
+            ctx.lineWidth = paint_size.value;
+            ctx.strokeStyle = paint_color.value;
+            ctx.lineTo(x, y);
+            ctx.stroke();
           }
         };
 
         canvas.onmouseup = function () {
-          switch (image_mode.value) {
-            case "paint":
-              is_allow_drawing = false;
-              break;
-
-            case "font":
-              editor.focus();
-              is_allow_move_editor = false;
-              break;
-
-            default:
-              break;
-          }
+          is_allow_drawing = false;
         };
 
         canvas.onmouseleave = function () {
-          if (image_mode.value === "paint") {
-            is_allow_drawing = false;
-          }
+          is_allow_drawing = false;
         };
       };
     </script>
@@ -738,14 +618,7 @@
 
     <div id="canvas-box">
       <div id="tool-box">
-        Mode:
-        <select id="canvas-mode">
-          <option value="paint">Brush</option>
-          <option value="font" title="After inputting, click: Save Text Box">
-            Input Text
-          </option>
-        </select>
-        Brush/Text Size:
+        Brush Size:
         <input
           type="number"
           max="13"
@@ -761,28 +634,9 @@
           <option value="black">Black</option>
         </select>
 
-        <select id="font" title="Font" style="display: none">
-          <option value="Microsoft YaHei">Microsoft YaHei</option>
-          <option value="SimHei">SimHei</option>
-          <option value="FangSong">FangSong</option>
-          <option value="SimSun">SimSun</option>
-          <option value="KaiTi_GB2312">KaiTi_GB2312</option>
-          <option value="STXingkai">STXingkai</option>
-        </select>
-        <button id="update-text" style="display: none">Save Text Box</button>
         <button onclick="clear_canvas()">Clear Screen</button>
       </div>
-      <input
-        id="edit-font"
-        style="
-          max-width: 250px;
-          position: absolute;
-          border: black solid 1px;
-          background-color: rgba(0, 0, 0, 0);
-          display: none;
-          overflow: auto;
-        "
-      />
+
       <canvas
         id="canvas"
         width="250"
