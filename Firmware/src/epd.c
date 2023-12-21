@@ -399,7 +399,7 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     obdRectangle(&obd, 0, 25, 249, 27, 1, 1);
 
     sprintf(buff, "%02d:%02d", _time.tm_hour, _time.tm_min);
-    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 12, 82, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 10, 82, (char *)buff, 1);
 
     sprintf(buff, "%d'C", EPD_read_temp());
     obdWriteStringCustom(&obd, (GFXfont *)&Special_Elite_Regular_30, 180, 74, (char *)buff, 1);
