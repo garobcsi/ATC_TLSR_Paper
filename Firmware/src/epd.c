@@ -383,37 +383,43 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
 
     obdCreateVirtualDisplay(&obd, epd_width, epd_height, epd_temp);
     obdFill(&obd, 0, 0); // fill with white
-
+    
     char buff[100];
     battery_level = get_battery_level(battery_mv);
 
     sprintf(buff, "ESL_%02X%02X%02X", mac_public[2], mac_public[1], mac_public[0]);
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 17, (char *)buff, 1);
 
-    obdRectangle(&obd, 252, 10, 255, 14, 1, 1);
-    obdRectangle(&obd, 255, 2, 295, 22, 1, 1);
+    obdRectangle(&obd, 192, 10, 209, 14, 1, 1);
+    obdRectangle(&obd, 195, 2, 249, 22, 1, 1);
 
-    sprintf(buff, "%d", battery_level);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 259, 18, (char *)buff, 0);
+    sprintf(buff, "%d%%", battery_level);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 199, 18, (char *)buff, 0);
 
-    obdRectangle(&obd, 0, 25, 295, 27, 1, 1);
+    obdRectangle(&obd, 0, 25, 249, 27, 1, 1);
 
     sprintf(buff, "%02d:%02d", _time.tm_hour, _time.tm_min);
-    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 35, 85, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&DSEG14_Classic_Mini_Regular_40, 12, 82, (char *)buff, 1);
 
-    sprintf(buff, "   %d'C", EPD_read_temp());
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 50, (char *)buff, 1);
+    sprintf(buff, "%d'C", EPD_read_temp());
+    obdWriteStringCustom(&obd, (GFXfont *)&Special_Elite_Regular_30, 180, 74, (char *)buff, 1);
 
-    obdRectangle(&obd, 216, 60, 295, 62, 1, 1);
+    if (_time.tm_hour >= 4 && _time.tm_hour < 8) {
+        sprintf(buff, "(\\OwO/)");
+    }
+    else if (_time.tm_hour >= 8 && _time.tm_hour < 18) {
+        sprintf(buff, "(O_O)");
+    }
+    else {
+        sprintf(buff, "(-_-)");
+    }
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 178, 116, (char *)buff, 1);
 
-    sprintf(buff, " %dmV", battery_mv);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 216, 84, (char *)buff, 1);
-
-    obdRectangle(&obd, 214, 27, 216, 99, 1, 1);
-    obdRectangle(&obd, 0, 97, 295, 99, 1, 1);
+    obdRectangle(&obd, 168, 27, 170, 99, 1, 1);
+    obdRectangle(&obd, 0, 97, 249, 99, 1, 1);
 
     sprintf(buff, "%d-%02d-%02d", _time.tm_year, _time.tm_month, _time.tm_day);
-    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 10, 120, (char *)buff, 1);
+    obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 1, 118, (char *)buff, 1);
 
     FixBuffer(epd_temp, epd_buffer, epd_width, epd_height);
 
