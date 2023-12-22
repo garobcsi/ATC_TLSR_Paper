@@ -27,7 +27,6 @@ RAM uint8_t epd_update_state = 0;
 RAM uint8_t epd_scene = 2;
 RAM uint8_t epd_wait_update = 0;
 
-RAM uint8_t hour_refresh = 100;
 RAM uint8_t minute_refresh = 100;
 
 const char *BLE_conn_string[] = {"BLE F", "BLE T"};
@@ -357,11 +356,6 @@ void update_time_scene(struct date_time _time, uint16_t battery_mv, int16_t temp
     else if (_time.tm_min != minute_refresh)
     {
         minute_refresh = _time.tm_min;
-
-        if (_time.tm_hour != hour_refresh)
-        {
-            hour_refresh = _time.tm_hour;
-        }
 
         scene(_time, battery_mv, temperature, _time.tm_hour == 0 && _time.tm_min == 0);
     }

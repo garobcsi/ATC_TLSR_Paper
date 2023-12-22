@@ -15,12 +15,56 @@ RAM uint32_t last_clock_increase;
 RAM uint32_t last_reached_period[10] = {0};
 RAM uint8_t has_ever_reached[10] = {0};
 
-uint8_t map[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-
 _attribute_ram_code_ void init_time(void)
 {
     one_second_trimmed += time_trime;
     current_unix_time = 0;
+}
+
+_attribute_ram_code_ void unixTimeToDateTime(uint32_t t) // not calculated week
+{
+    uint32_t a;
+    uint32_t b;
+    uint32_t c;
+    uint32_t d;
+    uint32_t e;
+    uint32_t f;
+
+    // Retrieve hours, minutes and seconds
+    current_date.tm_sec = t % 60;
+    t /= 60;
+    current_date.tm_min = t % 60;
+    t /= 60;
+    current_date.tm_hour = t % 24;
+    t /= 24;
+
+    // Convert Unix time to date
+    a = (uint32_t)((4 * t + 102032) / 146097 + 15);
+    b = (uint32_t)(t + 2442113 + a - (a / 4));
+    c = (20 * b - 2442) / 7305;
+    d = b - 365 * c - (c / 4);
+    e = d * 1000 / 30601;
+    f = d - e * 30 - e * 601 / 1000;
+
+    // January and February are counted as months 13 and 14 of the previous year
+    if (e <= 13)
+    {
+        c -= 4716;
+        e -= 1;
+    }
+    else
+    {
+        c -= 4715;
+        e -= 13;
+    }
+
+    // Retrieve year, month and day
+    current_date.tm_year = c;
+    current_date.tm_month = e;
+    current_date.tm_day = f;
+
+    // week not calculated
+    current_date.tm_week = 0;
 }
 
 _attribute_ram_code_ void handler_time(void)
@@ -30,26 +74,7 @@ _attribute_ram_code_ void handler_time(void)
         last_clock_increase += one_second_trimmed;
         current_unix_time++;
 
-        current_date.tm_min = (current_unix_time / 60) % 60;
-        current_date.tm_hour = ((current_unix_time / 60) / 60) % 24;
-        current_date.tm_sec = current_unix_time % 60;
-
-        if (current_unix_time % 86400 == 0) {
-            current_date.tm_month = current_date.tm_month % 12;
-            if (current_date.tm_day + 1 > map[current_date.tm_month - 1]) {
-                current_date.tm_day = 1;
-                if (current_date.tm_month + 1 > 12) {
-                    current_date.tm_month = 1;
-                    current_date.tm_year += 1;
-                } else {
-                    current_date.tm_month += 1;
-                }
-            } else {
-                current_date.tm_day = current_date.tm_day + 1;
-            }
-
-            current_date.tm_week = (current_date.tm_week + 1) % 7;
-        }
+        unixTimeToDateTime(current_unix_time);
     }
 }
 
@@ -77,6 +102,12 @@ _attribute_ram_code_ void set_time(uint32_t time_now, uint16_t time_year, uint8_
     current_date.tm_week = time_week;
 }
 
-_attribute_ram_code_ struct date_time get_time(void) {
+_attribute_ram_code_ struct date_time get_time(void)
+{
     return current_date;
+}
+
+_attribute_ram_code_ uint32_t get_unix_time(void)
+{
+    return current_unix_time;
 }
