@@ -357,7 +357,11 @@ void update_time_scene(struct date_time _time, uint16_t battery_mv, int16_t temp
     else if (_time.tm_min != minute_refresh)
     {
         minute_refresh = _time.tm_min;
-        hour_refresh = _time.tm_hour;
+
+        if (_time.tm_hour != hour_refresh)
+        {
+            hour_refresh = _time.tm_hour;
+        }
 
         scene(_time, battery_mv, temperature, _time.tm_hour == 0 && _time.tm_min == 0);
     }
@@ -404,14 +408,14 @@ void epd_display_time_with_date(struct date_time _time, uint16_t battery_mv, int
     sprintf(buff, "%d'C", EPD_read_temp());
     obdWriteStringCustom(&obd, (GFXfont *)&Special_Elite_Regular_30, 180, 74, (char *)buff, 1);
 
-    if (_time.tm_hour >= 4 && _time.tm_hour < 8) {
+    if (_time.tm_hour >= 4 && _time.tm_hour < 10) {
         sprintf(buff, "(\\OwO/)");
     }
-    else if (_time.tm_hour >= 8 && _time.tm_hour < 18) {
-        sprintf(buff, "(O_O)");
+    else if (_time.tm_hour >= 10 && _time.tm_hour < 20) {
+        sprintf(buff, "(OwO)");
     }
     else {
-        sprintf(buff, "(-_-)");
+        sprintf(buff, "(-w-)");
     }
     obdWriteStringCustom(&obd, (GFXfont *)&Dialog_plain_16, 178, 116, (char *)buff, 1);
 
