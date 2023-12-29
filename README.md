@@ -5,6 +5,9 @@ Updated ota controll panel (for the firmweare): [web](https://garobcsi.github.io
 
 This firmweare made to work on S3N@ E31HA. Other models may not work correctly.
 
+![Firmware img](https://github.com/garobcsi/ATC_TLSR_Paper/assets/77503417/cd453878-cb36-4a4f-8f26-9b48b58a4940)
+
+
 # ATC_TLSR_Paper
 Custom BLE firmware for Hanshow E-Paper Shelf Labels / Price Tags using the TLSR8359 ARM SOC
 
