@@ -1,7 +1,7 @@
 # TL;DR
 
 > **Warning** <br>
-> This project may include high battery usage.
+> This firmweare may include high battery usage.
 
 This repo was made by splicing these two repos: [ATC_TLSR_Paper](https://github.com/atc1441/ATC_TLSR_Paper) [stellar-L3N-etag](https://github.com/reece15/stellar-L3N-etag)
 
