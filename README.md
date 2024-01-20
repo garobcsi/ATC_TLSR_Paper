@@ -1,4 +1,8 @@
 # TL;DR
+
+> **Warning** <br>
+> This project may include high battery usage.
+
 This repo was made by splicing these two repos: [ATC_TLSR_Paper](https://github.com/atc1441/ATC_TLSR_Paper) [stellar-L3N-etag](https://github.com/reece15/stellar-L3N-etag)
 
 Updated ota controll panel (for the firmweare): [web](https://garobcsi.github.io/ATC_TLSR_Paper/web_tools/) 
